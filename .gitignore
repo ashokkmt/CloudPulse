@@ -1,0 +1,31 @@
+# Local workspace files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Frontend build output and dependencies
+frontend/.next/
+frontend/node_modules/
+
+# Backend build output and binaries
+backend/bin/
+backend/*.exe
+backend/*.test
+
+# Generic build artifacts
+dist/
+build/
+coverage/
+*.log
+
+# Editor settings
+.idea/
+.vscode/
+
+# Bootcamp source docs stay out of the runtime app repo root noise
+DigitalOcean*
+roadmap_*
