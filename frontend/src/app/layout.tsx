@@ -1,9 +1,9 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'CloudPulse',
-  description: 'Minimal CloudPulse demo app for the DigitalOcean bootcamp roadmap.',
+  title: "CloudPulse Dashboard",
+  description: "Real-time analytics and task management",
 };
 
 export default function RootLayout({
