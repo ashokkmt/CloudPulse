@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Activity } from "lucide-react";
+import { requestJson } from "@/lib/api";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -18,28 +19,21 @@ export default function Register() {
     setError("");
 
     try {
-      const res = await fetch("http://localhost:8000/api/auth/register", {
+      await requestJson("/api/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
-      if (!res.ok) {
-        throw new Error("Failed to register. User might already exist.");
-      }
 
       // Auto login after register
-      const loginRes = await fetch("http://localhost:8000/api/auth/login", {
+      const data = await requestJson<{ token: string }>("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await loginRes.json();
       localStorage.setItem("token", data.token);
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Failed to register. User might already exist.");
     } finally {
       setLoading(false);
     }

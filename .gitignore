@@ -29,3 +29,4 @@ coverage/
 # Bootcamp source docs stay out of the runtime app repo root noise
 DigitalOcean*
 roadmap_*
+*.txt

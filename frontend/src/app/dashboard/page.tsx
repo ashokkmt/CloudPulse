@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, LogOut, Plus, CheckCircle2, Circle, Trash2, BarChart3, ListTodo, Zap } from "lucide-react";
+import { requestJson } from "@/lib/api";
 
 interface Task {
   id: number;
@@ -30,35 +31,26 @@ export default function Dashboard() {
   }, []);
 
   const fetchData = async () => {
-    const token = localStorage.getItem("token");
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!token) {
       router.push("/login");
       return;
     }
 
     try {
-      const [tasksRes, analyticsRes] = await Promise.all([
-        fetch("http://localhost:8000/api/tasks", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch("http://localhost:8000/api/analytics", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+      const [tasksData, analyticsData] = await Promise.all([
+        requestJson<{ tasks: Task[] }>("/api/tasks"),
+        requestJson<Analytics>("/api/analytics")
       ]);
-
-      if (tasksRes.status === 401) {
-        localStorage.removeItem("token");
-        router.push("/login");
-        return;
-      }
-
-      const tasksData = await tasksRes.json();
-      const analyticsData = await analyticsRes.json();
 
       setTasks(tasksData.tasks || []);
       setAnalytics(analyticsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch data:", error);
+      if (error.message.includes("401") || error.message.includes("unauthorized")) {
+        localStorage.removeItem("token");
+        router.push("/login");
+      }
     } finally {
       setLoading(false);
     }
@@ -73,35 +65,23 @@ export default function Dashboard() {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
-    const token = localStorage.getItem("token");
     try {
-      const res = await fetch("http://localhost:8000/api/tasks", {
+      await requestJson("/api/tasks", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ title: newTaskTitle }),
       });
 
-      if (res.ok) {
-        setNewTaskTitle("");
-        fetchData();
-      }
+      setNewTaskTitle("");
+      fetchData();
     } catch (error) {
       console.error("Failed to add task:", error);
     }
   };
 
   const toggleTask = async (task: Task) => {
-    const token = localStorage.getItem("token");
     try {
-      await fetch(`http://localhost:8000/api/tasks/${task.id}`, {
+      await requestJson(`/api/tasks/${task.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ done: !task.done }),
       });
       fetchData();
@@ -111,11 +91,9 @@ export default function Dashboard() {
   };
 
   const deleteTask = async (id: number) => {
-    const token = localStorage.getItem("token");
     try {
-      await fetch(`http://localhost:8000/api/tasks/${id}`, {
+      await requestJson(`/api/tasks/${id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       fetchData();
     } catch (error) {
