@@ -19,7 +19,7 @@ export default function Login() {
     setError("");
 
     try {
-      const data = await requestJson<{ token: string }>("/api/auth/login", {
+      const data = await requestJson<{ token: string }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });

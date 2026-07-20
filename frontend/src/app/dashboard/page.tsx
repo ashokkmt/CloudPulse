@@ -39,8 +39,8 @@ export default function Dashboard() {
 
     try {
       const [tasksData, analyticsData] = await Promise.all([
-        requestJson<{ tasks: Task[] }>("/api/tasks"),
-        requestJson<Analytics>("/api/analytics")
+        requestJson<{ tasks: Task[] }>("/tasks"),
+        requestJson<Analytics>("/analytics")
       ]);
 
       setTasks(tasksData.tasks || []);
@@ -66,7 +66,7 @@ export default function Dashboard() {
     if (!newTaskTitle.trim()) return;
 
     try {
-      await requestJson("/api/tasks", {
+      await requestJson("/tasks", {
         method: "POST",
         body: JSON.stringify({ title: newTaskTitle }),
       });
@@ -80,7 +80,7 @@ export default function Dashboard() {
 
   const toggleTask = async (task: Task) => {
     try {
-      await requestJson(`/api/tasks/${task.id}`, {
+      await requestJson(`/tasks/${task.id}`, {
         method: "PUT",
         body: JSON.stringify({ done: !task.done }),
       });
@@ -92,7 +92,7 @@ export default function Dashboard() {
 
   const deleteTask = async (id: number) => {
     try {
-      await requestJson(`/api/tasks/${id}`, {
+      await requestJson(`/tasks/${id}`, {
         method: "DELETE",
       });
       fetchData();

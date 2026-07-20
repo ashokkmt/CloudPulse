@@ -19,13 +19,13 @@ export default function Register() {
     setError("");
 
     try {
-      await requestJson("/api/auth/register", {
+      await requestJson("/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
 
       // Auto login after register
-      const data = await requestJson<{ token: string }>("/api/auth/login", {
+      const data = await requestJson<{ token: string }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });

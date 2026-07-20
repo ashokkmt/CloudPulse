@@ -22,7 +22,7 @@ services:
       - "6379"
 
   backend:
-    image: registry.digitalocean.com/cloudpulse-registry/backend:v2
+    image: registry.digitalocean.com/cloudpulse-registry/backend:v3
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -54,7 +54,7 @@ services:
       - backend
 
   frontend:
-    image: registry.digitalocean.com/cloudpulse-registry/frontend:v2
+    image: registry.digitalocean.com/cloudpulse-registry/frontend:v3
     restart: unless-stopped
     ports:
       - "3000:3000"
