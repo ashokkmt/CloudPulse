@@ -1,4 +1,3 @@
-version: '3.8'
 name: cloudpulse-monitoring
 
 services:
@@ -44,6 +43,8 @@ services:
     volumes:
       - /var/log:/var/log
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/promtail/config.yml:/etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     restart: unless-stopped
 
@@ -58,6 +59,9 @@ services:
       - "4317:4317" # OTLP gRPC
       - "4318:4318" # OTLP HTTP
     restart: unless-stopped
+    networks:
+      - default
+      - observability
 
   alertmanager:
     image: prom/alertmanager:latest
@@ -93,3 +97,8 @@ services:
 volumes:
   prometheus_data:
   grafana_data:
+
+networks:
+  observability:
+    external: true
+    name: cloudpulse-observability

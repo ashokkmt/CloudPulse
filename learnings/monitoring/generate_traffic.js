@@ -2,7 +2,7 @@ const http = require('http');
 
 // The endpoint to hit. 
 // You can change this to /api/broken for Experiment 2!
-const URL = 'http://localhost:8000/healthz';
+const URL = 'http://localhost:8000/api/broken';
 
 function makeRequest() {
     return new Promise((resolve) => {

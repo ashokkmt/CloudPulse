@@ -8,6 +8,7 @@ import (
 
 	"cloudpulse/backend/internal/middleware"
 	"cloudpulse/backend/internal/repository"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -25,6 +26,10 @@ func NewRouter(repo repository.Repository) http.Handler {
 	})
 
 	mux.Handle("/metrics", promhttp.Handler())
+
+	mux.HandleFunc("/api/broken", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Simulated Server Error", http.StatusInternalServerError)
+	})
 
 	mux.HandleFunc("/api/auth/register", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -94,7 +99,7 @@ func NewRouter(repo repository.Repository) http.Handler {
 
 	// Protected Routes
 	protectedMux := http.NewServeMux()
-	
+
 	protectedMux.HandleFunc("/api/analytics", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -119,7 +124,7 @@ func NewRouter(repo repository.Repository) http.Handler {
 
 	protectedMux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Context().Value(middleware.UserIDKey).(int)
-		
+
 		switch r.Method {
 		case http.MethodGet:
 			tasks, err := repo.GetTasksByUserID(r.Context(), userID)
@@ -188,7 +193,7 @@ func NewRouter(repo repository.Repository) http.Handler {
 	mux.Handle("/api/tasks/", middleware.AuthMiddleware(protectedMux))
 
 	// Global Middlewares (Metrics, CORS)
-	return corsMiddleware(middleware.MetricsMiddleware(mux))
+	return corsMiddleware(middleware.TracingMiddleware(middleware.MetricsMiddleware(mux)))
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

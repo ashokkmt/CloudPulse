@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"cloudpulse/backend/internal/handler"
+	"cloudpulse/backend/internal/middleware"
 	"cloudpulse/backend/internal/repository"
 
 	_ "github.com/lib/pq"
@@ -32,6 +34,18 @@ func main() {
 
 	if err := db.Ping(); err != nil {
 		log.Fatalf("Error connecting to database: %v", err)
+	}
+
+	tracingEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	shutdownTracing, err := middleware.InitTracing(context.Background(), "cloudpulse-backend", tracingEndpoint)
+	if err != nil {
+		log.Printf("Tracing disabled: %v", err)
+	} else if shutdownTracing != nil {
+		defer func() {
+			if shutdownErr := shutdownTracing(context.Background()); shutdownErr != nil {
+				log.Printf("Error shutting down tracing: %v", shutdownErr)
+			}
+		}()
 	}
 
 	repo := repository.NewPostgresRepository(db)
