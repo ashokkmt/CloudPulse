@@ -1,0 +1,28 @@
+{
+  "title": "Application Dashboard",
+  "tags": [ "app" ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "RPS",
+      "targets": [
+        { "expr": "rate(http_requests_total[5m])", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "P95 Latency",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rate",
+      "targets": [
+        { "expr": "rate(http_requests_total{status=~\"5..\"}[5m])", "refId": "A" }
+      ]
+    }
+  ]
+}

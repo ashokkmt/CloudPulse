@@ -1,0 +1,21 @@
+{
+  "title": "Infrastructure Dashboard",
+  "tags": [ "infra" ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Node Memory",
+      "targets": [
+        { "expr": "100 - ((node_memory_MemAvailable_bytes * 100) / node_memory_MemTotal_bytes)", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Node CPU (Idle)",
+      "targets": [
+        { "expr": "avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100", "refId": "A" }
+      ]
+    }
+  ]
+}

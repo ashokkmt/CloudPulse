@@ -1,3 +1,5 @@
+name: cloudpulse-app
+
 services:
   db:
     image: postgres:15-alpine
