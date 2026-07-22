@@ -1,0 +1,5 @@
+ALTER TABLE tasks ADD COLUMN attachment_url VARCHAR(512);
+ALTER TABLE tasks ADD COLUMN attachment_name VARCHAR(255);
+ALTER TABLE tasks ADD COLUMN attachment_size BIGINT;
+ALTER TABLE tasks ADD COLUMN mime_type VARCHAR(100);
+ALTER TABLE tasks ADD COLUMN thumbnail_url VARCHAR(512);

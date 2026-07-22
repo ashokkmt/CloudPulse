@@ -3,7 +3,7 @@ services:
     image: postgres:15-alpine
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.backend
     expose:
       - "5432"
     volumes:
@@ -27,10 +27,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
-    environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4317
-      - OTEL_SERVICE_NAME=cloudpulse-backend
+      - .env.backend
     depends_on:
       db:
         condition: service_healthy
@@ -41,7 +38,7 @@ services:
     image: registry.digitalocean.com/cloudpulse-registry/worker:v1
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.backend
     depends_on:
       db:
         condition: service_healthy
@@ -52,7 +49,7 @@ services:
     image: registry.digitalocean.com/cloudpulse-registry/simulator:v1
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.backend
     depends_on:
       - backend
 
@@ -62,9 +59,29 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - .env.frontend
     depends_on:
       - backend
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    privileged: true
+    restart: unless-stopped
 
 volumes:
   postgres_data:

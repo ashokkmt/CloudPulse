@@ -4,9 +4,13 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
     ...(init?.headers || {}),
   };
+
+  // Only set application/json if not passing FormData
+  if (!(init?.body instanceof FormData)) {
+    (headers as Record<string, string>)['Content-Type'] = 'application/json';
+  }
 
   if (token && !(init?.headers as Record<string, string>)?.Authorization) {
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;

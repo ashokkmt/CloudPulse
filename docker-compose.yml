@@ -3,10 +3,8 @@ name: cloudpulse-app
 services:
   db:
     image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: cloudpulse
+    env_file:
+      - ./backend/.env.local
     ports:
       - "5432:5432"
     volumes:
@@ -30,16 +28,14 @@ services:
       target: api
     ports:
       - "8000:8000"
-    environment:
-      - PORT=8000
-      - DATABASE_URL=postgres://postgres:postgrespassword@db:5432/cloudpulse?sslmode=disable
-      - REDIS_URL=redis:6379
-      - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4317
-      - OTEL_SERVICE_NAME=cloudpulse-backend
+    env_file:
+      - ./backend/.env.local
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_started
+      minio:
         condition: service_started
     networks:
       - default
@@ -50,22 +46,34 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: worker
-    environment:
-      - DATABASE_URL=postgres://postgres:postgrespassword@db:5432/cloudpulse?sslmode=disable
-      - REDIS_URL=redis:6379
+    env_file:
+      - ./backend/.env.local
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+      minio:
+        condition: service_started
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    env_file:
+      - ./backend/.env.local
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
 
   simulator:
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: simulator
-    environment:
-      - API_URL=http://backend:8000
+    env_file:
+      - ./backend/.env.local
     depends_on:
       - backend
 
@@ -83,9 +91,38 @@ services:
     depends_on:
         - backend
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    env_file:
+      - ./backend/.env.local
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "8001:5540"
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
-
+  minio_data:
+  pgadmin_data:
+  redisinsight_data:
+  
 networks:
   observability:
     external: true

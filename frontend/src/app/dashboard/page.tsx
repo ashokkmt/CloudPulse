@@ -9,6 +9,11 @@ interface Task {
   id: number;
   title: string;
   done: boolean;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentSize?: number;
+  mimeType?: string;
+  thumbnailUrl?: string;
   createdAt: string;
 }
 
@@ -23,6 +28,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -66,12 +72,22 @@ export default function Dashboard() {
     if (!newTaskTitle.trim()) return;
 
     try {
-      await requestJson("/tasks", {
+      const task = await requestJson<Task>("/tasks", {
         method: "POST",
         body: JSON.stringify({ title: newTaskTitle }),
       });
 
+      if (attachment) {
+        const formData = new FormData();
+        formData.append("attachment", attachment);
+        await requestJson(`/tasks/${task.id}/attachment`, {
+          method: "POST",
+          body: formData,
+        });
+      }
+
       setNewTaskTitle("");
+      setAttachment(null);
       fetchData();
     } catch (error) {
       console.error("Failed to add task:", error);
@@ -98,6 +114,17 @@ export default function Dashboard() {
       fetchData();
     } catch (error) {
       console.error("Failed to delete task:", error);
+    }
+  };
+
+  const deleteAttachment = async (id: number) => {
+    try {
+      await requestJson(`/tasks/${id}/attachment`, {
+        method: "DELETE",
+      });
+      fetchData();
+    } catch (error) {
+      console.error("Failed to delete attachment:", error);
     }
   };
 
@@ -155,17 +182,28 @@ export default function Dashboard() {
               <BarChart3 size={20} color="var(--accent-color)" /> My Tasks
             </h2>
             
-            <form onSubmit={addTask} style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="What needs to be done?"
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-              />
-              <button type="submit" className="btn" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
-                <Plus size={16} /> Add Task
-              </button>
+            <form onSubmit={addTask} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="What needs to be done?"
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button type="submit" className="btn" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+                  <Plus size={16} /> Add Task
+                </button>
+              </div>
+              <div>
+                <input
+                  type="file"
+                  onChange={(e) => setAttachment(e.target.files ? e.target.files[0] : null)}
+                  style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}
+                />
+                {attachment && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--accent-color)' }}>Ready to upload</span>}
+              </div>
             </form>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -176,29 +214,50 @@ export default function Dashboard() {
               ) : (
                 tasks.map(task => (
                   <div key={task.id} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
+                    display: 'flex', flexDirection: 'column',
                     padding: '1rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '8px',
                     border: '1px solid var(--surface-border)', transition: 'all 0.2s ease'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <button 
+                          onClick={() => toggleTask(task)} 
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: task.done ? 'var(--success-color)' : 'var(--text-secondary)' }}
+                        >
+                          {task.done ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                        </button>
+                        <span style={{ fontSize: '1rem', color: task.done ? 'var(--text-secondary)' : 'var(--text-primary)', textDecoration: task.done ? 'line-through' : 'none' }}>
+                          {task.title}
+                        </span>
+                      </div>
                       <button 
-                        onClick={() => toggleTask(task)} 
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: task.done ? 'var(--success-color)' : 'var(--text-secondary)' }}
+                        onClick={() => deleteTask(task.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.5rem' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--danger-color)'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
                       >
-                        {task.done ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                        <Trash2 size={18} />
                       </button>
-                      <span style={{ fontSize: '1rem', color: task.done ? 'var(--text-secondary)' : 'var(--text-primary)', textDecoration: task.done ? 'line-through' : 'none' }}>
-                        {task.title}
-                      </span>
                     </div>
-                    <button 
-                      onClick={() => deleteTask(task.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.5rem' }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = 'var(--danger-color)'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    {task.attachmentUrl && (
+                      <div style={{ marginTop: '1rem', marginLeft: '3rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        {task.thumbnailUrl ? (
+                          <img src={task.thumbnailUrl} alt="Thumbnail" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px' }} />
+                        ) : task.mimeType?.startsWith('image/') ? (
+                          <img src={task.attachmentUrl} alt="Attachment" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px' }} />
+                        ) : (
+                          <a href={task.attachmentUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)', fontSize: '0.875rem' }}>
+                            View Attachment
+                          </a>
+                        )}
+                        <button 
+                          onClick={() => deleteAttachment(task.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger-color)', fontSize: '0.75rem' }}
+                        >
+                          Remove File
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))
               )}

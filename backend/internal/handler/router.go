@@ -2,18 +2,24 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"cloudpulse/backend/internal/cache"
 	"cloudpulse/backend/internal/middleware"
+	"cloudpulse/backend/internal/model"
 	"cloudpulse/backend/internal/repository"
+	"cloudpulse/backend/internal/storage"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func NewRouter(repo repository.Repository) http.Handler {
+func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storageSvc *storage.StorageService) http.Handler {
 	mux := http.NewServeMux()
 
 	// Public Routes
@@ -105,8 +111,19 @@ func NewRouter(repo repository.Repository) http.Handler {
 			methodNotAllowed(w)
 			return
 		}
-		// Dummy analytics for now, can be cached in Redis later
+		
 		userID := r.Context().Value(middleware.UserIDKey).(int)
+		cacheKey := fmt.Sprintf("dashboard:stats:user:%d", userID)
+
+		var stats map[string]interface{}
+		err := redisCache.Get(r.Context(), cacheKey, &stats)
+		if err == nil {
+			// Cache hit
+			jsonResponse(w, http.StatusOK, stats)
+			return
+		}
+
+		// Cache miss
 		tasks, _ := repo.GetTasksByUserID(r.Context(), userID)
 		completed := 0
 		for _, t := range tasks {
@@ -114,12 +131,17 @@ func NewRouter(repo repository.Repository) http.Handler {
 				completed++
 			}
 		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{
+		stats = map[string]interface{}{
 			"tasksTotal":     len(tasks),
 			"tasksCompleted": completed,
 			"tasksOpen":      len(tasks) - completed,
 			"status":         "active",
-		})
+		}
+
+		// Store in Redis with 30s TTL
+		_ = redisCache.Set(r.Context(), cacheKey, stats, 30*time.Second)
+
+		jsonResponse(w, http.StatusOK, stats)
 	})
 
 	protectedMux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
@@ -127,11 +149,21 @@ func NewRouter(repo repository.Repository) http.Handler {
 
 		switch r.Method {
 		case http.MethodGet:
-			tasks, err := repo.GetTasksByUserID(r.Context(), userID)
+			cacheKey := fmt.Sprintf("tasks:user:%d", userID)
+			var tasks []model.Task
+			err := redisCache.Get(r.Context(), cacheKey, &tasks)
+			if err == nil {
+				jsonResponse(w, http.StatusOK, map[string]any{"tasks": tasks})
+				return
+			}
+
+			tasks, err = repo.GetTasksByUserID(r.Context(), userID)
 			if err != nil {
 				jsonError(w, http.StatusInternalServerError, "error fetching tasks")
 				return
 			}
+
+			_ = redisCache.Set(r.Context(), cacheKey, tasks, 30*time.Second)
 			jsonResponse(w, http.StatusOK, map[string]any{"tasks": tasks})
 		case http.MethodPost:
 			var payload struct {
@@ -146,6 +178,20 @@ func NewRouter(repo repository.Repository) http.Handler {
 				jsonError(w, http.StatusInternalServerError, "error creating task")
 				return
 			}
+			
+			// Invalidate caches
+			_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
+			_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
+
+			// Emit job to Redis Queue
+			job := model.TaskJob{
+				TaskID:    task.ID,
+				UserID:    task.UserID,
+				CreatedAt: time.Now(),
+			}
+			_ = redisCache.Enqueue(r.Context(), "tasks_queue", job)
+
+			slog.Info("Task Created", slog.Int("task_id", task.ID), slog.Int("user_id", task.UserID))
 			jsonResponse(w, http.StatusCreated, task)
 		default:
 			methodNotAllowed(w)
@@ -154,9 +200,97 @@ func NewRouter(repo repository.Repository) http.Handler {
 
 	protectedMux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Context().Value(middleware.UserIDKey).(int)
-		id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/tasks/"))
+		path := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
+		
+		isAttachment := strings.HasSuffix(path, "/attachment")
+		idStr := path
+		if isAttachment {
+			idStr = strings.TrimSuffix(path, "/attachment")
+		}
+
+		id, err := strconv.Atoi(idStr)
 		if err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid task id")
+			return
+		}
+
+		if isAttachment {
+			switch r.Method {
+			case http.MethodPost:
+				r.Body = http.MaxBytesReader(w, r.Body, 20<<20) // 20 MB limit
+				if err := r.ParseMultipartForm(20 << 20); err != nil {
+					jsonError(w, http.StatusBadRequest, "file too large or invalid")
+					return
+				}
+
+				file, header, err := r.FormFile("attachment")
+				if err != nil {
+					jsonError(w, http.StatusBadRequest, "missing attachment")
+					return
+				}
+				defer file.Close()
+
+				// verify task exists and belongs to user
+				_, err = repo.GetTaskByID(r.Context(), id, userID)
+				if err != nil {
+					jsonError(w, http.StatusNotFound, "task not found")
+					return
+				}
+
+				objectName := fmt.Sprintf("user-%d/task-%d/%s", userID, id, header.Filename)
+				mimeType := header.Header.Get("Content-Type")
+				size := header.Size
+
+				url, err := storageSvc.UploadFile(r.Context(), objectName, file, size, mimeType)
+				if err != nil {
+					jsonError(w, http.StatusInternalServerError, "error uploading file")
+					return
+				}
+
+				task, err := repo.UpdateTaskAttachment(r.Context(), id, userID, &url, &objectName, &size, &mimeType)
+				if err != nil {
+					jsonError(w, http.StatusInternalServerError, "error updating task")
+					return
+				}
+
+				_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
+				_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
+				
+				// Push thumbnail job if image
+				if strings.HasPrefix(mimeType, "image/") {
+					job := model.TaskJob{
+						TaskID:    task.ID,
+						UserID:    task.UserID,
+						CreatedAt: time.Now(),
+					}
+					_ = redisCache.Enqueue(r.Context(), "thumbnail_queue", job)
+				}
+
+				jsonResponse(w, http.StatusOK, task)
+			case http.MethodDelete:
+				task, err := repo.GetTaskByID(r.Context(), id, userID)
+				if err != nil {
+					jsonError(w, http.StatusNotFound, "task not found")
+					return
+				}
+
+				if task.AttachmentName != nil && *task.AttachmentName != "" {
+					_ = storageSvc.DeleteFile(r.Context(), *task.AttachmentName)
+				}
+
+				task, err = repo.UpdateTaskAttachment(r.Context(), id, userID, nil, nil, nil, nil)
+				if err != nil {
+					jsonError(w, http.StatusInternalServerError, "error updating task")
+					return
+				}
+
+				_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
+				_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
+
+				jsonResponse(w, http.StatusOK, task)
+			default:
+				methodNotAllowed(w)
+			}
 			return
 		}
 
@@ -175,22 +309,57 @@ func NewRouter(repo repository.Repository) http.Handler {
 				jsonError(w, http.StatusNotFound, "task not found")
 				return
 			}
+			
+			// Invalidate caches
+			_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
+			_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
+
+			slog.Info("Task Updated", slog.Int("task_id", task.ID), slog.Int("user_id", task.UserID))
 			jsonResponse(w, http.StatusOK, task)
 		case http.MethodDelete:
+			// Fetch the task first to check if there is an attachment
+			task, err := repo.GetTaskByID(r.Context(), id, userID)
+			if err != nil {
+				jsonError(w, http.StatusNotFound, "task not found")
+				return
+			}
+
+			// If there's an attachment, delete it from spaces
+			if task.AttachmentName != nil && *task.AttachmentName != "" {
+				_ = storageSvc.DeleteFile(r.Context(), *task.AttachmentName)
+			}
+
 			if err := repo.DeleteTask(r.Context(), id, userID); err != nil {
 				jsonError(w, http.StatusNotFound, "task not found")
 				return
 			}
+
+			// Invalidate caches
+			_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
+			_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
+
+			slog.Info("Task Deleted", slog.Int("task_id", id), slog.Int("user_id", userID))
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			methodNotAllowed(w)
 		}
 	})
 
-	// Wrap protected routes with Auth Middleware
+	// Rate limiting middleware for write APIs
+	writeRateLimiter := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+				middleware.RateLimitMiddleware(redisCache, 60, time.Minute)(next).ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	// Wrap protected routes with Auth Middleware and Rate Limiter
 	mux.Handle("/api/analytics", middleware.AuthMiddleware(protectedMux))
-	mux.Handle("/api/tasks", middleware.AuthMiddleware(protectedMux))
-	mux.Handle("/api/tasks/", middleware.AuthMiddleware(protectedMux))
+	mux.Handle("/api/tasks", middleware.AuthMiddleware(writeRateLimiter(protectedMux)))
+	mux.Handle("/api/tasks/", middleware.AuthMiddleware(writeRateLimiter(protectedMux)))
 
 	// Global Middlewares (Metrics, CORS)
 	return corsMiddleware(middleware.TracingMiddleware(middleware.MetricsMiddleware(mux)))
