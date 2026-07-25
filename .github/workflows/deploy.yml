@@ -1,0 +1,90 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Login to Container Registry
+        run: doctl registry login --expiry-seconds 600
+
+      ####################################################
+      # Backend
+      ####################################################
+
+      - name: Build Backend
+        run: |
+          docker build \
+            --target api \
+            -t ${{ secrets.REGISTRY_NAME }}/backend:${{ github.sha }} \
+            ./backend
+
+      - name: Push Backend
+        run: |
+          docker push \
+            ${{ secrets.REGISTRY_NAME }}/backend:${{ github.sha }}
+
+      ####################################################
+      # Worker
+      ####################################################
+
+      - name: Build Worker
+        run: |
+          docker build \
+            --target worker \
+            -t ${{ secrets.REGISTRY_NAME }}/worker:${{ github.sha }} \
+            ./backend
+
+      - name: Push Worker
+        run: |
+          docker push \
+            ${{ secrets.REGISTRY_NAME }}/worker:${{ github.sha }}
+
+      ####################################################
+      # Frontend
+      ####################################################
+
+      - name: Build Frontend
+        run: |
+          docker build \
+            -t ${{ secrets.REGISTRY_NAME }}/frontend:${{ github.sha }} \
+            ./frontend
+
+      - name: Push Frontend
+        run: |
+          docker push \
+            ${{ secrets.REGISTRY_NAME }}/frontend:${{ github.sha }}
+            
+      ####################################################
+      # Deploy
+      ####################################################
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DROPLET_IP }}
+          username: deploy
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            cd cloudpulse
+            export APP_VERSION=${{ github.sha }}
+            chmod +x deploy.sh
+            ./deploy.sh

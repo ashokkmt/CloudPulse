@@ -2,19 +2,20 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"cloudpulse/backend/internal/metrics"
 
+	"net/http"
+
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"net/http"
 )
 
 type StorageService struct {
@@ -31,23 +32,23 @@ func NewStorageService() *StorageService {
 	cdnURL := os.Getenv("CDN_URL")
 
 	if endpoint == "" {
-		endpoint = "localhost:9000" // default minio local
+		endpoint = "s3.localhost:9000" // Use s3.localhost to ensure signature matches browser requests
 	}
 	if bucketName == "" {
 		bucketName = "cloudpulse"
 	}
 
 	// For MinIO locally, useSSL is typically false. DigitalOcean Spaces uses true.
-	// We infer based on endpoint containing localhost
 	useSSL := true
-	if endpoint == "localhost:9000" || endpoint == "minio:9000" {
+	if strings.Contains(endpoint, "localhost") || strings.Contains(endpoint, "minio") {
 		useSSL = false
 	}
-	
+
 	transport := otelhttp.NewTransport(http.DefaultTransport)
+	creds := credentials.NewStaticV4(accessKeyID, secretAccessKey, "")
 
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds:     credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+		Creds:     creds,
 		Secure:    useSSL,
 		Transport: transport,
 	})
@@ -64,9 +65,7 @@ func NewStorageService() *StorageService {
 		if err != nil {
 			slog.Error("Failed to create bucket", slog.String("bucket", bucketName), slog.String("error", err.Error()))
 		} else {
-			// Set policy for public read (for attachments and thumbnails)
-			policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}`, bucketName)
-			_ = client.SetBucketPolicy(ctx, bucketName, policy)
+			slog.Info("Bucket created successfully", slog.String("bucket", bucketName))
 		}
 	}
 
@@ -77,6 +76,10 @@ func NewStorageService() *StorageService {
 	}
 }
 
+func (s *StorageService) BucketName() string {
+	return s.bucketName
+}
+
 func (s *StorageService) UploadFile(ctx context.Context, objectName string, reader io.Reader, objectSize int64, contentType string) (string, error) {
 	start := time.Now()
 	defer func() { metrics.UploadLatency.Observe(time.Since(start).Seconds()) }()
@@ -84,7 +87,7 @@ func (s *StorageService) UploadFile(ctx context.Context, objectName string, read
 	_, err := s.client.PutObject(ctx, s.bucketName, objectName, reader, objectSize, minio.PutObjectOptions{
 		ContentType: contentType,
 	})
-	
+
 	if err != nil {
 		metrics.UploadsTotal.WithLabelValues("failure").Inc()
 		slog.Error("Spaces Error", slog.String("operation", "upload"), slog.String("object", objectName), slog.String("error", err.Error()))
@@ -93,7 +96,7 @@ func (s *StorageService) UploadFile(ctx context.Context, objectName string, read
 
 	metrics.UploadsTotal.WithLabelValues("success").Inc()
 	slog.Info("File Upload", slog.String("object", objectName), slog.Int64("size", objectSize))
-	return s.GetObjectURL(objectName), nil
+	return objectName, nil
 }
 
 func (s *StorageService) DeleteFile(ctx context.Context, objectName string) error {
@@ -106,21 +109,15 @@ func (s *StorageService) DeleteFile(ctx context.Context, objectName string) erro
 	return err
 }
 
-func (s *StorageService) GetObjectURL(objectName string) string {
-	if s.cdnURL != "" {
-		// e.g. http://localhost:9000/cloudpulse/attachment.jpg
-		u, _ := url.Parse(s.cdnURL)
-		u.Path = u.Path + "/" + objectName
-		return u.String()
+func (s *StorageService) GeneratePresignedURL(ctx context.Context, objectName string) (string, error) {
+	reqParams := make(url.Values)
+
+	presignedURL, err := s.client.PresignedGetObject(ctx, s.bucketName, objectName, time.Minute*15, reqParams)
+	if err != nil {
+		return "", err
 	}
-	// Fallback to direct S3 URL
-	scheme := "https"
-	if s.client.EndpointURL().Scheme != "" {
-		scheme = s.client.EndpointURL().Scheme
-	} else if s.client.EndpointURL().Host == "minio:9000" || s.client.EndpointURL().Host == "localhost:9000" {
-		scheme = "http"
-	}
-	return fmt.Sprintf("%s://%s/%s/%s", scheme, s.client.EndpointURL().Host, s.bucketName, objectName)
+
+	return presignedURL.String(), nil
 }
 
 func (s *StorageService) GetFile(ctx context.Context, objectName string) (io.ReadCloser, error) {

@@ -128,6 +128,17 @@ export default function Dashboard() {
     }
   };
 
+  const viewAttachment = async (id: number) => {
+    try {
+      const data = await requestJson<{url: string}>(`/tasks/${id}/attachment/url`);
+      if (data.url) {
+        window.open(data.url, "_blank");
+      }
+    } catch (error) {
+      console.error("Failed to fetch attachment url:", error);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -239,16 +250,22 @@ export default function Dashboard() {
                         <Trash2 size={18} />
                       </button>
                     </div>
-                    {task.attachmentUrl && (
+                    {(task.attachmentUrl || task.attachmentName) && (
                       <div style={{ marginTop: '1rem', marginLeft: '3rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         {task.thumbnailUrl ? (
-                          <img src={task.thumbnailUrl} alt="Thumbnail" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px' }} />
+                          <button onClick={() => viewAttachment(task.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} title="View Full Attachment">
+                            <img src={task.thumbnailUrl} alt="Thumbnail" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px' }} />
+                          </button>
                         ) : task.mimeType?.startsWith('image/') ? (
-                          <img src={task.attachmentUrl} alt="Attachment" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px' }} />
+                          <button onClick={() => viewAttachment(task.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} title="View Full Attachment">
+                            <div style={{ width: '80px', height: '80px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              Click to view
+                            </div>
+                          </button>
                         ) : (
-                          <a href={task.attachmentUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)', fontSize: '0.875rem' }}>
+                          <button onClick={() => viewAttachment(task.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-color)', fontSize: '0.875rem' }}>
                             View Attachment
-                          </a>
+                          </button>
                         )}
                         <button 
                           onClick={() => deleteAttachment(task.id)}

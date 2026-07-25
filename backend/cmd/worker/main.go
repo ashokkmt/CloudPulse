@@ -165,12 +165,12 @@ func processThumbnail(ctx context.Context, job model.TaskJob, repo repository.Re
 	thumbName = strings.TrimSuffix(thumbName, ".jpeg")
 	thumbName = thumbName + "-thumb.jpg"
 
-	thumbURL, err := storageSvc.UploadFile(ctx, thumbName, &buf, int64(buf.Len()), "image/jpeg")
+	thumbKey, err := storageSvc.UploadFile(ctx, thumbName, &buf, int64(buf.Len()), "image/jpeg")
 	if err != nil {
 		return fmt.Errorf("could not upload thumbnail: %w", err)
 	}
 
-	if err := repo.UpdateTaskThumbnail(ctx, task.ID, task.UserID, &thumbURL); err != nil {
+	if err := repo.UpdateTaskThumbnail(ctx, task.ID, task.UserID, &thumbKey); err != nil {
 		return fmt.Errorf("could not update task thumbnail url: %w", err)
 	}
 

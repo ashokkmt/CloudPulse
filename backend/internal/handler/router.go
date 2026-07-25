@@ -111,7 +111,7 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 			methodNotAllowed(w)
 			return
 		}
-		
+
 		userID := r.Context().Value(middleware.UserIDKey).(int)
 		cacheKey := fmt.Sprintf("dashboard:stats:user:%d", userID)
 
@@ -153,6 +153,13 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 			var tasks []model.Task
 			err := redisCache.Get(r.Context(), cacheKey, &tasks)
 			if err == nil {
+				// Inject presigned URLs for thumbnails before returning
+				for i := range tasks {
+					if tasks[i].ThumbnailURL != nil && *tasks[i].ThumbnailURL != "" {
+						url, _ := storageSvc.GeneratePresignedURL(r.Context(), *tasks[i].ThumbnailURL)
+						tasks[i].ThumbnailURL = &url
+					}
+				}
 				jsonResponse(w, http.StatusOK, map[string]any{"tasks": tasks})
 				return
 			}
@@ -164,6 +171,15 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 			}
 
 			_ = redisCache.Set(r.Context(), cacheKey, tasks, 30*time.Second)
+
+			// Inject presigned URLs for thumbnails before returning
+			for i := range tasks {
+				if tasks[i].ThumbnailURL != nil && *tasks[i].ThumbnailURL != "" {
+					url, _ := storageSvc.GeneratePresignedURL(r.Context(), *tasks[i].ThumbnailURL)
+					tasks[i].ThumbnailURL = &url
+				}
+			}
+
 			jsonResponse(w, http.StatusOK, map[string]any{"tasks": tasks})
 		case http.MethodPost:
 			var payload struct {
@@ -178,7 +194,7 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 				jsonError(w, http.StatusInternalServerError, "error creating task")
 				return
 			}
-			
+
 			// Invalidate caches
 			_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
 			_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
@@ -201,11 +217,12 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 	protectedMux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Context().Value(middleware.UserIDKey).(int)
 		path := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
-		
-		isAttachment := strings.HasSuffix(path, "/attachment")
-		idStr := path
-		if isAttachment {
-			idStr = strings.TrimSuffix(path, "/attachment")
+
+		parts := strings.Split(path, "/")
+		idStr := parts[0]
+		action := ""
+		if len(parts) > 1 {
+			action = strings.Join(parts[1:], "/")
 		}
 
 		id, err := strconv.Atoi(idStr)
@@ -214,7 +231,35 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 			return
 		}
 
-		if isAttachment {
+		if action == "attachment/url" {
+			if r.Method != http.MethodGet {
+				methodNotAllowed(w)
+				return
+			}
+			task, err := repo.GetTaskByID(r.Context(), id, userID)
+			if err != nil {
+				jsonError(w, http.StatusNotFound, "task not found")
+				return
+			}
+			if task.AttachmentName == nil || *task.AttachmentName == "" {
+				jsonError(w, http.StatusNotFound, "attachment not found")
+				return
+			}
+			url, err := storageSvc.GeneratePresignedURL(r.Context(), *task.AttachmentName)
+			if err != nil {
+				slog.Error("GeneratePresignedURL failed",
+					slog.String("object", *task.AttachmentName),
+					slog.String("bucket", storageSvc.BucketName()),
+					slog.Any("err", err),
+				)
+				jsonError(w, http.StatusInternalServerError, "error generating url")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]string{"url": url})
+			return
+		}
+
+		if action == "attachment" {
 			switch r.Method {
 			case http.MethodPost:
 				r.Body = http.MaxBytesReader(w, r.Body, 20<<20) // 20 MB limit
@@ -241,13 +286,13 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 				mimeType := header.Header.Get("Content-Type")
 				size := header.Size
 
-				url, err := storageSvc.UploadFile(r.Context(), objectName, file, size, mimeType)
+				_, err = storageSvc.UploadFile(r.Context(), objectName, file, size, mimeType)
 				if err != nil {
 					jsonError(w, http.StatusInternalServerError, "error uploading file")
 					return
 				}
 
-				task, err := repo.UpdateTaskAttachment(r.Context(), id, userID, &url, &objectName, &size, &mimeType)
+				task, err := repo.UpdateTaskAttachment(r.Context(), id, userID, nil, &objectName, &size, &mimeType)
 				if err != nil {
 					jsonError(w, http.StatusInternalServerError, "error updating task")
 					return
@@ -255,7 +300,7 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 
 				_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
 				_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
-				
+
 				// Push thumbnail job if image
 				if strings.HasPrefix(mimeType, "image/") {
 					job := model.TaskJob{
@@ -309,7 +354,7 @@ func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storage
 				jsonError(w, http.StatusNotFound, "task not found")
 				return
 			}
-			
+
 			// Invalidate caches
 			_ = redisCache.Delete(r.Context(), fmt.Sprintf("dashboard:stats:user:%d", userID))
 			_ = redisCache.Delete(r.Context(), fmt.Sprintf("tasks:user:%d", userID))
