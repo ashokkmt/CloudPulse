@@ -77,10 +77,22 @@ jobs:
       # Deploy
       ####################################################
 
-      - name: Deploy
+      - name: Deploy to Droplet 1
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.DROPLET_IP }}
+          username: deploy
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            cd cloudpulse
+            export APP_VERSION=${{ github.sha }}
+            chmod +x deploy.sh
+            ./deploy.sh
+
+      - name: Deploy to Droplet 2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DROPLET_IP_02 }}
           username: deploy
           key: ${{ secrets.DROPLET_SSH_KEY }}
           script: |
