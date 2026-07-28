@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudpulse-worker
+  labels:
+    app: worker
+  namespace: cloudpulse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: registry.digitalocean.com/cloudpulse-registry/worker:b8a40dd089d7f0fe48c5b7860ac7edb4a6444835
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: cloudpulse-secrets
+            - configMapRef:
+                name: cloudpulse-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"

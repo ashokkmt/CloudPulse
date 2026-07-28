@@ -11,6 +11,7 @@ import (
 	_ "image/png"
 	"image/jpeg"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -53,20 +54,41 @@ func main() {
 		dbURL = "postgres://postgres:postgres@localhost:5432/cloudpulse?sslmode=disable"
 	}
 
+	// Log config (mask sensitive data)
+	maskedDBHost := "unknown"
+	if parsed, parseErr := url.Parse(dbURL); parseErr == nil {
+		maskedDBHost = parsed.Host
+	}
+	slog.Info("Worker configuration loaded",
+		"dbHost", maskedDBHost,
+		"redisURL_len", len(redisURL),
+	)
+
+	// --- Redis Connection ---
+	slog.Info("Worker connecting to Redis...", "url_length", len(redisURL))
 	redisCache := cache.NewRedisCache(redisURL)
+	slog.Info("Worker Redis connection established")
+
+	// --- Storage Service ---
+	slog.Info("Worker initializing storage service...")
 	storageSvc := storage.NewStorageService()
-	
+	slog.Info("Worker storage service initialized")
+
+	// --- Database Connection ---
+	slog.Info("Worker connecting to PostgreSQL...", "host", maskedDBHost)
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		slog.Error("Error opening database", slog.String("error", err.Error()))
+		slog.Error("FATAL: Worker failed to open database connection pool", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 	defer db.Close()
 
+	slog.Info("Worker PostgreSQL connection pool opened, pinging...")
 	if err := db.Ping(); err != nil {
-		slog.Error("Error connecting to database", slog.String("error", err.Error()))
+		slog.Error("FATAL: Worker failed to ping database", slog.String("error", err.Error()), slog.String("host", maskedDBHost))
 		os.Exit(1)
 	}
+	slog.Info("Worker PostgreSQL connected successfully")
 	repo := repository.NewPostgresRepository(db)
 	ctx := context.Background()
 

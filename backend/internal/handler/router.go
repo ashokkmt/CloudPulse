@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -19,15 +21,43 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storageSvc *storage.StorageService) http.Handler {
+func NewRouter(repo repository.Repository, redisCache *cache.RedisCache, storageSvc *storage.StorageService, db *sql.DB) http.Handler {
 	mux := http.NewServeMux()
 
-	// Public Routes
+	// Public Routes — Health Check (used by K8s liveness/readiness probes)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
 			return
 		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		// Check database connectivity
+		if err := db.PingContext(ctx); err != nil {
+			slog.Error("Health check failed: database unreachable", slog.String("error", err.Error()))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status": "unhealthy",
+				"error":  "database unreachable: " + err.Error(),
+			})
+			return
+		}
+
+		// Check Redis connectivity
+		if err := redisCache.Ping(ctx); err != nil {
+			slog.Error("Health check failed: redis unreachable", slog.String("error", err.Error()))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status": "unhealthy",
+				"error":  "redis unreachable: " + err.Error(),
+			})
+			return
+		}
+
 		jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 

@@ -33,6 +33,11 @@ func NewRedisCache(redisURL string) *RedisCache {
 	return &RedisCache{client: client}
 }
 
+// Ping checks if Redis is reachable (used by K8s health checks)
+func (c *RedisCache) Ping(ctx context.Context) error {
+	return c.client.Ping(ctx).Err()
+}
+
 func (c *RedisCache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	start := time.Now()
 	defer func() { metrics.RedisLatency.WithLabelValues("set").Observe(time.Since(start).Seconds()) }()
