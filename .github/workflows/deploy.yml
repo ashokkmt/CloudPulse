@@ -1,11 +1,14 @@
 name: Deploy Production
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
+  # Disabled automatic triggers to prevent failing without resources.
+  # Uncomment the lines below to enable automatic deployment after CI.
+  # workflow_run:
+  #   workflows:
+  #     - CI
+  #   types:
+  #     - completed
+  workflow_dispatch:
 
 jobs:
   deploy:

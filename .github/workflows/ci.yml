@@ -1,12 +1,15 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  # Disabled automatic triggers to save action minutes.
+  # Uncomment the lines below to enable CI on push/PR.
+  # push:
+  #   branches:
+  #     - main
+  # pull_request:
+  #   branches:
+  #     - main
+  workflow_dispatch:
 
 jobs:
   test-backend:

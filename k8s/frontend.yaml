@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: registry.digitalocean.com/cloudpulse-registry/frontend:b8a40dd089d7f0fe48c5b7860ac7edb4a6444835
+          image: registry.digitalocean.com/cloudpulse-registry/frontend:${APP_VERSION}
           imagePullPolicy: Always
           ports:
             - containerPort: 3000

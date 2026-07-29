@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: registry.digitalocean.com/cloudpulse-registry/worker:b8a40dd089d7f0fe48c5b7860ac7edb4a6444835
+          image: registry.digitalocean.com/cloudpulse-registry/worker:${APP_VERSION}
           imagePullPolicy: Always
           envFrom:
             - secretRef:

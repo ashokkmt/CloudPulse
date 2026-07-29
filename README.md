@@ -1,65 +1,73 @@
-# CloudPulse Development Environment
+# ☁️ CloudPulse: The Complete Cloud Engineering Sandbox
 
-CloudPulse is a robust application designed to help master DigitalOcean cloud services. Below is the complete listing of all services available in the local development environment using Docker Compose.
+CloudPulse is a production-ready application and educational repository designed to teach you how to deploy and scale modern infrastructure across multiple cloud paradigms.
 
-## Available Services
+Whether you want to learn traditional server deployments, container orchestration, Serverless Functions, or Infrastructure as Code, this repository provides a working codebase to practice it all.
 
-### Application Services
-* **Frontend**
-  * **URL**: http://localhost:3000
-  * **Purpose**: Next.js user interface.
-* **Backend API**
-  * **URL**: http://localhost:8000
-  * **Purpose**: Go REST API.
-* **MinIO (DigitalOcean Spaces Simulator)**
-  * **API URL**: http://localhost:9000
-  * **Console URL**: http://localhost:9001
-  * **Credentials**: `minioadmin` / `minioadmin`
-  * **Purpose**: S3-compatible object storage simulating DO Spaces.
+---
 
-### Database & Cache Management
-* **PostgreSQL Admin UI (pgAdmin 4)**
-  * **URL**: http://localhost:5050
-  * **Credentials**: `admin@cloudpulse.com` / `admin`
-  * **Database Connection Details**: 
-    * Host: `db`
-    * Port: `5432`
-    * Username: `postgres`
-    * Password: `postgrespassword`
-  * **Purpose**: Web-based PostgreSQL management tool for inspecting the `tasks` and `users` tables.
-* **Redis Admin UI (RedisInsight)**
-  * **URL**: http://localhost:8001
-  * **Connection Details**: Click "Add Redis Database" and use Host: `redis` and Port: `6379`.
-  * **Purpose**: Real-time Redis browser for inspecting cache keys, TTLs, and observing cache invalidation.
+## 🏗️ Repository Architecture
 
-### Observability & Monitoring Stack
-* **Grafana**
-  * **URL**: http://localhost:3001
-  * **Credentials**: `admin` / `admin` (or configured via `.env.local`)
-  * **Purpose**: Centralized dashboarding for metrics, logs, and traces.
-* **Prometheus**
-  * **URL**: http://localhost:9090
-  * **Purpose**: Time-series metrics collection and querying.
-* **Tempo**
-  * **URL**: http://localhost:3200
-  * **Purpose**: Distributed tracing backend (OpenTelemetry).
-* **Loki**
-  * **URL**: http://localhost:3100
-  * **Purpose**: Log aggregation system.
-* **Alertmanager**
-  * **URL**: http://localhost:9093
-  * **Purpose**: Handles alerts sent by Prometheus.
+This repository is split into the **Application Code** and the **Infrastructure & Learnings** that power it.
 
-## Development Workflow
+### 💻 The Application (`/frontend`, `/backend`)
+CloudPulse is a real-time analytics and task management dashboard built with a microservice architecture:
+- **`frontend/`**: A modern web interface built with **Next.js** and TypeScript.
+- **`backend/`**: A robust REST API built in **Go** that handles business logic, user authentication, and data persistence. It includes:
+  - `cmd/api/`: The main HTTP server.
+  - `cmd/worker/`: A background worker process.
+  - `cmd/simulator/`: An activity simulator to generate mock traffic for observability testing.
 
-To start the full development environment, run:
+### 📚 The Learnings (`/learnings`)
+This directory contains an 11-day, step-by-step curriculum that walks you through deploying the CloudPulse application using different cloud strategies:
+- **Days 1-3:** Docker Compose, Nginx, and single-node deployments.
+- **Days 4-5:** Managed Databases (PostgreSQL, Redis) and Object Storage (S3/Spaces).
+- **Days 6-7:** CI/CD via GitHub Actions and Horizontal Scaling (Load Balancers).
+- **Day 8:** Kubernetes orchestration.
+- **Day 9:** Infrastructure as Code with Terraform.
+- **Day 10-11:** Platform as a Service (PaaS) and Serverless Functions.
 
-```bash
-# 1. Start the main application stack
-docker-compose --env-file ./backend/.env.local up -d --build
+### ⚙️ Infrastructure as Code (`/terraform`)
+Contains production-grade **Terraform** configurations to automate the provisioning of the entire cloud environment (VPCs, Firewalls, Load Balancers, Droplets/EC2, Databases, Object Storage).
 
-# 2. Start the observability stack
-docker-compose -f docker-compose.monitoring.yml up -d
-```
+### ☸️ Kubernetes (`/k8s`)
+Contains standard Kubernetes manifests to deploy the entire CloudPulse stack to a managed Kubernetes cluster. Includes Deployments, Services, ConfigMaps, Secrets, and Nginx Ingress Controller configurations.
 
-You can now open the respective browser tabs to verify the application's behavior.
+### 📊 Observability (`/monitoring`)
+A complete observability stack configured for Docker Compose and easily translatable to cloud environments.
+- **Prometheus**: Time-series metrics collection. It actively scrapes metrics from the Go backend (`/metrics`) and infrastructure nodes (via Node Exporter).
+- **Grafana**: The centralized UI dashboard. It acts as the single pane of glass to query metrics from Prometheus, logs from Loki, and traces from Tempo.
+- **Loki**: Highly efficient log aggregation. It automatically collects `stdout` and `stderr` logs from all Docker containers using the Docker Loki driver, making them searchable in Grafana.
+- **Tempo**: Distributed tracing via OpenTelemetry. It receives span data from the Go backend to help you trace request latency across database and cache calls.
+- **Alertmanager**: Handles alerts generated by Prometheus (e.g., High CPU, Container Down) and routes them to external receivers like Slack or Email.
+
+---
+
+## 🚀 Getting Started
+
+### Local Development
+To run the entire CloudPulse stack and observability tools on your local machine using Docker Compose:
+
+1. Environment Variables:
+   - Find **all** `.env.example` files in the project (e.g., in `backend/` and `frontend/`) and copy them to `.env` for local development.
+   - For production deployments, you must manually create a `.env.production` or `.env.prod` file yourself using the `.env` file as a template, filling in your secure production secrets.
+2. Start the core application:
+   ```bash
+   docker-compose up -d --build
+   ```
+3. Start the monitoring stack:
+   ```bash
+   docker-compose -f docker-compose.monitoring.yml up -d
+   ```
+4. Access the application at `http://localhost:3000`.
+
+### Cloud Deployment
+To begin your journey into cloud deployments, open [Roadmap_to_follow.md](./Roadmap_to_follow.md) and start from Day 1!
+
+---
+
+## 🛠️ Key Configuration Files
+- **`docker-compose.yml`**: The local development environment. Uses live-reloading where possible.
+- **`docker-compose.monitoring.yml`**: The local observability stack (Grafana, Prometheus, etc.).
+- **`docker-compose.prod.yml`**: Designed for single-server production deployments. Uses pre-built images from a container registry and implements restart policies.
+- **`backend/Dockerfile` & `frontend/Dockerfile`**: Optimized multi-stage Dockerfiles designed to produce the smallest possible image sizes for production.

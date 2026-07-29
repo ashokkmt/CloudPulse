@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: registry.digitalocean.com/cloudpulse-registry/backend:b8a40dd089d7f0fe48c5b7860ac7edb4a6444835
+          image: registry.digitalocean.com/cloudpulse-registry/backend:${APP_VERSION}
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
