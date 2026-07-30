@@ -125,25 +125,15 @@ cloudpulse/
 |   |-- loki/              # Log aggregation config
 |   |-- tempo/             # Distributed tracing config
 |   +-- alertmanager/      # Alert routing and notification config
-|-- infrastructure/        # Infrastructure as Code (Day 6+)
-|   |-- terraform/         # DO resource definitions
-|   |   |-- modules/       # Reusable TF modules
-|   |   +-- environments/  # Dev/Prod state
-|   |-- kubernetes/        # K8s manifests (Day 8+)
-|   |   |-- base/          # Common K8s configs
-|   |   +-- overlays/      # Env-specific configs (dev, prod)
-|   +-- scripts/           # Helper bash scripts
+|-- learnings/             # Detailed steps for setup and deployment
+|-- terraform/             # Infrastructure as Code (Day 6+)
+|-- k8s/                   # K8s manifests (Day 8+)
 |-- .github/               # CI/CD pipelines
 |   +-- workflows/         # GitHub Actions definitions
-|-- nginx/                 # Reverse proxy config
-|   +-- nginx.conf         # Routing rules for backend/frontend
 |-- docker-compose.yml             # Local development stack
 |-- docker-compose.monitoring.yml  # Local observability stack
+|-- docker-compose.monitoring.prod.yml  # Production observability stack
 |-- docker-compose.prod.yml        # Production single-node stack
-|-- docs/                  # Architecture docs, runbooks, ADRs
-|   |-- architecture.md   # System architecture documentation
-|   |-- runbook.md         # Operational procedures
-|   +-- decisions/         # Architecture Decision Records
 |-- Makefile               # Handy shortcuts for commands
 +-- README.md              # Project documentation
 ```
